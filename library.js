@@ -28,15 +28,15 @@
 		pluginSettingsURL: '/admin/plugins/fusionauth-oidc',
 		pluginSettings: new Settings('fusionauth-oidc', '1.0.0', {
 			// Default settings
-			clientId: null,
-			clientSecret: null,
+			clientId: "",
+			clientSecret: "",
 			emailClaim: 'email',
-			discoveryBaseURL: null,
-			authorizationEndpoint: null,
-			tokenEndpoint: null,
-			ssoTokenEndpoint: null,
-			userInfoEndpoint: null,
-			emailDomain: null
+			discoveryBaseURL: "",
+			authorizationEndpoint: "",
+			tokenEndpoint: "",
+			ssoTokenEndpoint: "",
+			userInfoEndpoint: "",
+			emailDomain: ""
 		}, false, false),
 	};
 
@@ -69,6 +69,7 @@
 
 
 	Oidc.createUser = async function (req, res, next) {
+		console.log("SB OIDC: Entry Log for ", req.originalUrl)
 		var msgid = (req.body.params && req.body.params.msgid)?req.body.params.msgid:"";
 		var response = {
 		  "id": "api.discussions.user.create",
@@ -81,10 +82,24 @@
 		}
 		if(req.body && req.body.request && req.body.request.username && req.body.request.identifier){
 			const settings = constants.pluginSettings.getWrapper();
-			var email = req.body.request.username + '@' + settings.emailDomain;			
+			var email = req.body.request.username;	
+			var mailformat = /\S+@\S/;
+			var userName = req.body.request.username;
+			console.log("Email request >> ", req.body.email)
+			console.log("Username request >> ",req.body.userName)
+			if((req.body.request.username).match(mailformat)) {
+				console.log("Debug in Line no.91")
+				userName = (req.body.request.username).split('@')[0];
+			} else {
+				console.log("Debug in Line no.94")
+				email = req.body.request.username + '@' + settings.emailDomain;
+			}
+			
+			console.log("Request body >>>>>>>>>>> ", req.body)
+
 			Oidc.login({
 				oAuthid: req.body.request.identifier,
-				username: req.body.request.username,
+				username: userName,
 				fullname: req.body.request.fullname ? req.body.request.fullname : null,
 				email: email,
 				rolesEnabled: settings.rolesClaim && settings.rolesClaim.length !== 0,
@@ -126,6 +141,7 @@
 						}
 						
 					}else{
+						console.log("SB OIDC: Error Log for ", req.originalUrl)
 						response.responseCode = "SERVER_ERROR"
 						response.responseCode = "400"
 						console.log(err);
@@ -164,6 +180,7 @@
 
 
 	function writeFile(message) {
+		console.log("Debug in writefile func. >>>>>>>", message)
 		const ts = new Date().toLocaleString();
 		const data = `${ts}: ${message}`;
 		fs.appendFile('./logs/redis.log',`${data}\n`, function(err,res){
@@ -190,6 +207,7 @@
 	  }
 
 	Oidc.topicCreate = function(paramas, callback) {
+		console.log("Debug in Line no. 210 topic Create >>>>>>", paramas)
 		if (paramas) {
 		  writeFile('SB:Topic create api');
 		  console.log('SB:Topic create api ');
@@ -210,6 +228,7 @@
 				redirect_uri: settings.callbackURL
 			}
 		}
+		console.log("Getaccesstoke from Code >>>>>>>>>> ", options)
 		return request(options);
 	};
 
@@ -251,6 +270,7 @@
 			}
 
 			const settings = constants.pluginSettings.getWrapper();
+			console.log("Plugin settings >>>>>>>>>>>>", settings)
 			//added as removed from UI
 			settings.emailClaim = 'email';
 			// If we are missing any settings
@@ -263,6 +283,7 @@
 				!settings.userInfoEndpoint ||
 				!settings.emailDomain) {
 				winston.info('Sunbird SSO will not be available until it is configured!');
+				console.log("Plugin settings >>>>>>> Sunbird SSO will not be available until it is configured! >>>>>")
 				return callback();
 			}
 
@@ -272,6 +293,8 @@
 			passport.use(constants.name, new CustomStrategy(
 				async function(req, callback) {
 					var profile = {};
+					console.log("1. Passport custom strategy >>>>>>>>>", req.query.access_token)
+					console.log("2. Passport custom strategy >>>>>>>>>", req.query.code)
 					// if request is not yet authenticated, redirect to login page
 					if (!req.query || (!req.query.code && !req.query.access_token)) {
 						var state = uid(24);
@@ -282,8 +305,12 @@
 						authUrl.searchParams.append("scope", ['openid', settings.emailClaim]);
 						authUrl.searchParams.append("redirect_uri", settings.callbackURL);
 						req.session.ssoState = state;
+					console.log(" Passport custom strategy state >>>>>>>>>", req.session.ssoState)						
 						this.redirect(authUrl.href);
+
 					} else {
+					console.log(" Passport custom strategy 3 >>>>>>>>>", req.query.access_token)
+
 						var accessToken = "";
 						if (req.query.access_token) {
 							// if request has access token, use it to fetch user info
@@ -345,6 +372,7 @@
 
 			// If we are doing the update, strategies won't be the right object so
 			if (strategies) {
+				console.log("Strategies")
 				strategies.push({
 					name: constants.name,
 					url: '/auth/' + constants.name,
@@ -360,6 +388,7 @@
 	};
 
 	Oidc.login = function (payload, callback) {
+		console.log("Payload in login >>>>>>>>>>>>",payload )
 		async.waterfall([
 			// Lookup user by existing oauthid
 			(callback) => Oidc.getUidByOAuthid(payload.oAuthid, callback),
@@ -373,6 +402,7 @@
 					if (!payload.email) {
 						return callback(new Error('The email was missing from the user, we cannot log them in.'));
 					}
+					console.log("Payload in login iemail>>>>>>>>>>>>",payload.email )
 
 					async.waterfall([
 						(callback) => User.getUidByEmail(payload.email, callback),
@@ -427,10 +457,12 @@
 			callback(err, {
 				uid: uid,
 			});
+			console.log("Checking callback at 460 >>>>>>>>>>", callback)
 		});
 	};
 
 	Oidc.getUidByOAuthid = function (oAuthid, callback) {
+		console.log("getUidByOAuthid >>>>>>>>> ", oAuthid)
 		db.getObjectField(constants.name + 'Id:uid', oAuthid, (err, uid) => {
 			if (err) {
 				return callback(err);
